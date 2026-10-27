@@ -73,7 +73,7 @@ jobs:
       # Security Threshold Policy:
       # 1. Fail build (exit-code: '1') if any exposed secrets exist anywhere in the repository.
       - name: Trivy Security Gate - Repository Secrets Scan (Blocking)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -84,7 +84,7 @@ jobs:
       # 2. Fail build (exit-code: '1') if any CRITICAL/HIGH misconfigurations exist in our
       # hardened application Dockerfiles (vote, result, worker) or Terraform IaC (terraform/).
       - name: Trivy Security Gate - Application Dockerfiles & Terraform Misconfig Scan (Blocking)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -96,7 +96,7 @@ jobs:
       # Legacy upstream sample dependencies (Node 18 / .NET 7 / Python 3.11) and Debian bookworm
       # base layers are audited in full table output (exit-code: '0') and documented in README.md.
       - name: Trivy Vulnerability Audit - Repository Dependencies
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -106,7 +106,7 @@ jobs:
           exit-code: '0'
 
       - name: Trivy Vulnerability Audit - Vote Image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'capstone-local/vote:${{ github.sha }}'
           scan-type: 'image'
@@ -116,7 +116,7 @@ jobs:
           exit-code: '0'
 
       - name: Trivy Vulnerability Audit - Result Image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'capstone-local/result:${{ github.sha }}'
           scan-type: 'image'
@@ -126,7 +126,7 @@ jobs:
           exit-code: '0'
 
       - name: Trivy Vulnerability Audit - Worker Image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'capstone-local/worker:${{ github.sha }}'
           scan-type: 'image'
