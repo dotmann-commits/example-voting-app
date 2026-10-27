@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote
+  labels:
+    app: vote
+spec:
+  replicas: {{ .Values.vote.replicas }}
+  selector:
+    matchLabels:
+      app: vote
+  template:
+    metadata:
+      labels:
+        app: vote
+    spec:
+      containers:
+        - name: vote
+          image: "{{ .Values.vote.image.repository }}:{{ default .Values.global.imageTag .Values.vote.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["gunicorn", "app:app", "-b", "0.0.0.0:{{ .Values.vote.service.targetPort }}", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+          ports:
+            - containerPort: {{ .Values.vote.service.targetPort }}
+              name: vote

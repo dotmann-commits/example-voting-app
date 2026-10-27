@@ -1,0 +1,54 @@
+global:
+  imageTag: "21d83786f7f7b89081885305be0ea1dd0245b777"
+  imagePullPolicy: IfNotPresent
+
+vote:
+  replicas: 1
+  image:
+    repository: dotmann/example-voting-app-vote
+    tag: ""
+  service:
+    type: NodePort
+    port: 8080
+    targetPort: 8080
+    nodePort: 31000
+
+result:
+  replicas: 1
+  image:
+    repository: dotmann/example-voting-app-result
+    tag: ""
+  service:
+    type: NodePort
+    port: 8081
+    targetPort: 8080
+    nodePort: 31001
+
+worker:
+  replicas: 1
+  image:
+    repository: dotmann/example-voting-app-worker
+    tag: ""
+
+redis:
+  replicas: 1
+  image:
+    repository: redis
+    tag: "alpine"
+  service:
+    type: ClusterIP
+    port: 6379
+    targetPort: 6379
+
+db:
+  replicas: 1
+  image:
+    repository: postgres
+    tag: "15-alpine"
+  env:
+    postgresUser: postgres
+    postgresPassword: postgres
+  service:
+    type: ClusterIP
+    port: 5432
+    targetPort: 5432
