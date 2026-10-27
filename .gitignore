@@ -4,3 +4,9 @@ bin/
 obj/
 .vs/
 node_modules/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+kubeconfig*

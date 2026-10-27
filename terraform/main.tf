@@ -1,7 +1,7 @@
 resource "kind_cluster" "voting_app" {
   name            = var.cluster_name
   node_image      = var.node_image
-  kubeconfig_path = var.kubeconfig_path
+  kubeconfig_path = pathexpand(var.kubeconfig_path)
   wait_for_ready  = true
 
   kind_config {

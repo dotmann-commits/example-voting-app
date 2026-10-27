@@ -11,7 +11,7 @@ variable "node_image" {
 }
 
 variable "kubeconfig_path" {
-  description = "Path where Terraform writes the cluster kubeconfig"
+  description = "Path where Terraform writes the cluster kubeconfig (supports ~ via pathexpand)"
   type        = string
-  default     = "/home/btee2/.kube/config"
+  default     = "~/.kube/config"
 }

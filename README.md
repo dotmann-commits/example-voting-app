@@ -148,10 +148,10 @@ worker-1  | Processing vote for 'b' by 'cdde808132ae285'
    - `vote/Dockerfile`: `python:3.11-slim` -> `python:3.11.11-slim-bookworm`
    - `result/Dockerfile`: `node:18-slim` -> `node:18.20.8-bookworm-slim`
    - `worker/Dockerfile`: `mcr.microsoft.com/dotnet/sdk:7.0` -> `mcr.microsoft.com/dotnet/sdk:7.0.410-bookworm-slim` and `mcr.microsoft.com/dotnet/runtime:7.0` -> `mcr.microsoft.com/dotnet/runtime:7.0.20-bookworm-slim`
-3. **Non-Root Runtime Execution (`USER`) & `HEALTHCHECK`:**
-   - `vote/Dockerfile`: Created unprivileged user `appuser` (`UID 1000`), chowned `/usr/local/app`, added `HEALTHCHECK`, and set `USER appuser` in both `dev` and `final` stages.
-   - `result/Dockerfile`: Set ownership of `/usr/local/app` and `/node_modules` to the built-in `node` user (`UID 1000`), added `HEALTHCHECK`, and set `USER node`.
-   - `worker/Dockerfile`: Created unprivileged user `appuser` (`UID 1000`), copied `/app` with `--chown=appuser:appuser`, added `HEALTHCHECK`, and set `USER appuser`.
+3. **Non-Root Runtime Execution (`USER`):**
+   - `vote/Dockerfile`: Created unprivileged user `appuser` (`UID 1000`), chowned `/usr/local/app`, and set `USER appuser` in both `dev` and `final` stages.
+   - `result/Dockerfile`: Set ownership of `/usr/local/app` and `/node_modules` to the built-in `node` user (`UID 1000`) and set `USER node`.
+   - `worker/Dockerfile`: Created unprivileged user `appuser` (`UID 1000`), copied `/app` with `--chown=appuser:appuser`, and set `USER appuser`.
 
 ### Verified Stage 2 Output (`docker compose exec -T <service> id`)
 ```text
@@ -164,7 +164,7 @@ worker: uid=1000(appuser) gid=1000(appuser) groups=1000(appuser)
 
 ## 6. Stage 3: Reproducible Kubernetes Cluster with Terraform
 
-> **Cost & Architecture Note:** To guarantee zero cloud spend (`$0.00`) while satisfying the Terraform Infrastructure-as-Code lifecycle (`fmt`, `init`, `validate`, `plan`, `apply`, `destroy`), `terraform/` provisions a local 2-node Kubernetes `v1.31.0` cluster (`voting-app-cluster`) on Docker using the `tehcyx/kind` provider (`~> 0.6.0`). Cloud-specific AWS EKS/VPC resources are intentionally not used so no billable cloud resources are created. If a reviewer runs this in another environment, override `kubeconfig_path` (e.g., `-var="kubeconfig_path=$HOME/.kube/config"`), as `variables.tf` defaults to `/home/btee2/.kube/config`.
+> **Cost & Architecture Note:** To guarantee zero cloud spend (`$0.00`) while satisfying the Terraform Infrastructure-as-Code lifecycle (`fmt`, `init`, `validate`, `plan`, `apply`, `destroy`), `terraform/` provisions a local 2-node Kubernetes `v1.31.0` cluster (`voting-app-cluster`) on Docker using the `tehcyx/kind` provider (`~> 0.6.0`). Cloud-specific AWS EKS/VPC resources are intentionally not used so no billable cloud resources are created. The `kubeconfig_path` variable in `variables.tf` defaults to `~/.kube/config` and is resolved portably via Terraform's `pathexpand(var.kubeconfig_path)`.
 
 ### Commands to Provision and Verify (Reviewer Instructions)
 
@@ -174,7 +174,7 @@ terraform fmt -check
 terraform init
 terraform validate
 terraform plan
-terraform apply -var="kubeconfig_path=$HOME/.kube/config"
+terraform apply
 ```
 
 Verify cluster readiness:
@@ -220,11 +220,11 @@ terraform destroy
 
 ### Workflow Overview (`.github/workflows/deploy.yml`)
 Triggered on `push` to `main`, `pull_request` to `main`, and `workflow_dispatch` with least-privilege `permissions: contents: read`:
-1. **Compose Validation & Build:** Runs `docker compose config -q` and builds production images (`vote` targeting `final`, `result`, and `worker`) tagged with `${{ github.sha }}`.
+1. **Compose, Helm & Image Build Validation:** Runs `docker compose config -q`, validates `./voting-app` (`helm lint` and `helm template`), and builds production images (`vote` targeting `final`, `result`, and `worker`) tagged with `${{ github.sha }}`.
 2. **Non-Root Verification & Integration Smoke Test:** Verifies container UIDs (`!= 0`), starts an isolated Compose project (`ci-test-${{ github.run_id }}`), exits non-zero if `:8080` or `:8081` fails readiness within 30 retries, submits a test vote (`vote=a`), verifies `worker` logs `"Processing vote"`, and cleans up via `docker compose -p ci-test-${{ github.run_id }} down --remove-orphans` (without `-v`).
 3. **Trivy Security Scans (`aquasecurity/trivy-action@v0.36.0`):**
    - **Blocking Secret Scan (`exit-code: '1'`):** Scans the repository (`scan-type: 'fs'`, `scanners: 'secret'`, `severity: 'CRITICAL,HIGH'`) and fails if any exposed secret is found.
-   - **Blocking Misconfiguration Scan (`exit-code: '1'`):** Scans application Dockerfiles and Terraform IaC (`scan-type: 'config'`, `skip-dirs: 'k8s-specifications,result/tests,seed-data'`, `severity: 'CRITICAL,HIGH'`).
+   - **Blocking Misconfiguration Scan (`exit-code: '1'`):** Scans the repository (`scan-type: 'config'`, `scan-ref: '.'`, `skip-dirs: 'k8s-specifications,voting-app,result/tests,seed-data'`, `severity: 'CRITICAL,HIGH'`), enforcing zero `CRITICAL`/`HIGH` misconfigurations on the application Dockerfiles (`vote/Dockerfile`, `result/Dockerfile`, `worker/Dockerfile`) and Terraform IaC (`terraform/`) while skipping `k8s-specifications`, `voting-app`, `result/tests`, and `seed-data`.
    - **Non-Blocking Vulnerability Audit (`exit-code: '0'`):** Audits repository dependencies (`fs`) and all three built container images (`vote`, `result`, `worker`) for `CRITICAL,HIGH` CVEs and prints full table reports in the Actions logs.
 4. **Docker Hub Publishing (`if: github.event_name == 'push' && github.ref == 'refs/heads/main'`):** Logs in to Docker Hub and pushes all three images tagged with the full commit SHA (`${{ github.sha }}`). Pull requests never publish images.
 

@@ -1,9 +1,17 @@
 .git
 .gitignore
+.dockerignore
+.github/
+.vscode/
 **/.DS_Store
 **/__pycache__
 **/*.py[cod]
 **/node_modules
+bin/
+obj/
+terraform/
+k8s-specifications/
+voting-app/
 .env
 .env.*
 !.env.example

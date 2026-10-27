@@ -1,12 +1,12 @@
 .git
 .gitignore
+.dockerignore
+Dockerfile
 **/.DS_Store
-**/__pycache__
-**/*.py[cod]
-**/node_modules
+bin/
+obj/
+.vs/
 .env
 .env.*
 !.env.example
 *.log
-bin/
-obj/
