@@ -234,11 +234,37 @@ Configure under **Settings -> Secrets and variables -> Actions**:
 - `DOCKERHUB_TOKEN` - Docker Hub Personal Access Token (`Read & Write`)
 
 ### Verified Stage 4 Output
-- **GitHub Actions Run:** Run ID `40471014013` (Job `122148174341` on commit `21d83786f7f7b89081885305be0ea1dd0245b777`) completed with **`SUCCESS` (`2m52s`)**.
-- **Published Docker Hub Images Verified via `docker manifest inspect`:**
+- **Latest CI Validation Run:** [Run ID `40511874195`](https://github.com/dotmann-commits/example-voting-app/actions/runs/40511874195) (Job `122215617783` on commit `a351018d5931d9e31d199d6ac143f02d391f68bc`) completed with **`SUCCESS` (`1m55s`)**, validating Docker Compose, `./voting-app` Helm lint/template rendering, non-root execution, integration smoke tests, Trivy scans, and Docker Hub image publishing (`:a351018d5931d9e31d199d6ac143f02d391f68bc`).
+- **Stage 5 Helm Chart Pinned Image Run:** Run ID `40471014013` (Job `122148174341` on commit `21d83786f7f7b89081885305be0ea1dd0245b777`) completed with **`SUCCESS` (`2m52s`)**. Stage 5's `voting-app/values.yaml` and `voting-app/Chart.yaml` pin image tag `21d83786f7f7b89081885305be0ea1dd0245b777` (the Stage 4 build deployed to the cluster prior to adding the Stage 5 chart and documentation commits), while commit `a351018d5931d9e31d199d6ac143f02d391f68bc` is the latest repository CI validation run:
   - `dotmann/example-voting-app-vote:21d83786f7f7b89081885305be0ea1dd0245b777` (`sha256:249a351068ebffc8ace408138cd35a2362fc300a41b8f69c6d369fd76237a094`)
   - `dotmann/example-voting-app-result:21d83786f7f7b89081885305be0ea1dd0245b777` (`sha256:f371d1fdb4cb0f21d99282b9bf6235c2cb80d71c0f12e6153a13e23cfad68637`)
   - `dotmann/example-voting-app-worker:21d83786f7f7b89081885305be0ea1dd0245b777` (`sha256:75c954f1252903ad80a020d671380006cf0c853e4ed4d7d21873a16fd67f907f`)
+
+#### Verified Trivy Scan Results (Run `40511874195`, Job `122215617783`)
+1. **Blocking Security Gates (`exit-code: '1'`, `severity: 'CRITICAL,HIGH'`) — Passed:**
+   - **Repository Secrets Scan (`fs`):** `0` exposed secrets detected.
+   - **Application Dockerfiles & Terraform Misconfiguration Scan (`config`):** `0` `CRITICAL`/`HIGH` misconfigurations reported across all four evaluated targets:
+     ```text
+     Report Summary
+
+     ┌───────────────────┬────────────┬───────────────────┐
+     │      Target       │    Type    │ Misconfigurations │
+     ├───────────────────┼────────────┼───────────────────┤
+     │ result/Dockerfile │ dockerfile │         0         │
+     ├───────────────────┼────────────┼───────────────────┤
+     │ terraform         │ terraform  │         0         │
+     ├───────────────────┼────────────┼───────────────────┤
+     │ vote/Dockerfile   │ dockerfile │         0         │
+     ├───────────────────┼────────────┼───────────────────┤
+     │ worker/Dockerfile │ dockerfile │         0         │
+     └───────────────────┴────────────┴───────────────────┘
+     ```
+2. **Non-Blocking Vulnerability Audits (`exit-code: '0'`, `severity: 'CRITICAL,HIGH'`):**
+   - **Repository Dependencies (`result/package-lock.json`):** `Total: 12 (HIGH: 11, CRITICAL: 1)`
+   - **Vote Image (`python:3.11.11-slim-bookworm`):** Debian 12.10 OS packages: `Total: 125 (HIGH: 116, CRITICAL: 9)`; Python packages: `Total: 3 (HIGH: 3, CRITICAL: 0)`
+   - **Result Image (`node:18.20.8-bookworm-slim`):** Debian 12.11 OS packages: `Total: 93 (HIGH: 87, CRITICAL: 6)`; Node.js packages: `Total: 35 (HIGH: 33, CRITICAL: 2)`
+   - **Worker Image (`mcr.microsoft.com/dotnet/runtime:7.0.20-bookworm-slim`):** Debian 12.5 OS packages: `Total: 124 (HIGH: 112, CRITICAL: 12)`; `.NET` dependencies (`app/Worker.deps.json`): `Total: 2 (HIGH: 1, CRITICAL: 1)` (`.NET 7.0.20` runtime: `0`)
+   - **Context & Remediation Status:** Container configuration issues (root user execution, unpinned base image tags, and build-context leaks) were remediated in Stage 2. The vulnerability audit steps above are configured as non-blocking (`exit-code: '0'`) for visibility on this legacy upstream sample (`Node 18`, `.NET 7`, `result/package-lock.json`, and Debian `bookworm` base images); a passing CI status does not mean the reported `HIGH`/`CRITICAL` vulnerabilities are fixed or acceptable for production.
 
 ---
 
