@@ -2,21 +2,9 @@ name: Build Result
 # template source: https://github.com/dockersamples/.github/blob/main/templates/call-docker-build.yaml
 
 on:
-  # we want pull requests so we can build(test) but not push to image registry
-  push:
-    branches:
-      - 'main'
-    # only build when important files change
-    paths:
-      - 'result/**'
-      - '.github/workflows/call-docker-build-result.yaml'
-  pull_request:
-    branches:
-      - 'main'
-    # only build when important files change
-    paths:
-      - 'result/**'
-      - '.github/workflows/call-docker-build-result.yaml'
+  # Changed from push/pull_request to workflow_dispatch so fork pushes use .github/workflows/deploy.yml
+  # while preserving the upstream reusable workflow definition for manual reference.
+  workflow_dispatch:
 
 jobs:
   call-docker-build:

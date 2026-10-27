@@ -1,0 +1,160 @@
+name: Capstone 1 CI - Build, Scan, and Publish
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Principle of least privilege: only read repository contents
+permissions:
+  contents: read
+
+jobs:
+  validate-scan-and-publish:
+    name: Validate, Trivy Scan & Publish Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config -q
+
+      - name: Build production container images locally for testing and scanning
+        run: |
+          docker build --target final -t capstone-local/vote:${{ github.sha }} ./vote
+          docker build -t capstone-local/result:${{ github.sha }} ./result
+          docker build -t capstone-local/worker:${{ github.sha }} ./worker
+
+      - name: Verify non-root runtime user inside built images
+        run: |
+          VOTE_UID=$(docker run --rm --entrypoint id capstone-local/vote:${{ github.sha }} -u)
+          RESULT_UID=$(docker run --rm --entrypoint id capstone-local/result:${{ github.sha }} -u)
+          WORKER_UID=$(docker run --rm --entrypoint id capstone-local/worker:${{ github.sha }} -u)
+          echo "Verified UIDs -> vote: ${VOTE_UID}, result: ${RESULT_UID}, worker: ${WORKER_UID}"
+          test "${VOTE_UID}" != "0"
+          test "${RESULT_UID}" != "0"
+          test "${WORKER_UID}" != "0"
+
+      - name: Run integration smoke test in isolated Compose project
+        run: |
+          docker compose -p ci-test-${{ github.run_id }} up -d --build
+          READY=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080 >/dev/null && curl -fsS http://localhost:8081 >/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "${READY}" -ne 1 ]; then
+            echo "Error: Vote (8080) or Result (8081) failed to become ready within timeout."
+            docker compose -p ci-test-${{ github.run_id }} ps
+            docker compose -p ci-test-${{ github.run_id }} logs
+            exit 1
+          fi
+          curl -fsS -X POST -d "vote=a" http://localhost:8080 >/dev/null
+          sleep 3
+          docker compose -p ci-test-${{ github.run_id }} ps
+          docker compose -p ci-test-${{ github.run_id }} logs worker | grep -q "Processing vote"
+        
+      - name: Clean up isolated Compose test containers (without -v)
+        if: always()
+        run: docker compose -p ci-test-${{ github.run_id }} down --remove-orphans
+
+      # Security Threshold Policy:
+      # 1. Fail build (exit-code: '1') if any exposed secrets exist anywhere in the repository.
+      - name: Trivy Security Gate - Repository Secrets Scan (Blocking)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'secret'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      # 2. Fail build (exit-code: '1') if any CRITICAL/HIGH misconfigurations exist in our
+      # hardened application Dockerfiles (vote, result, worker) or Terraform IaC (terraform/).
+      - name: Trivy Security Gate - Application Dockerfiles & Terraform Misconfig Scan (Blocking)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          skip-dirs: 'k8s-specifications,result/tests,seed-data'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      # 3. Full Repository & Container Image Vulnerability Audit (table report).
+      # Legacy upstream sample dependencies (Node 18 / .NET 7 / Python 3.11) and Debian bookworm
+      # base layers are audited in full table output (exit-code: '0') and documented in README.md.
+      - name: Trivy Vulnerability Audit - Repository Dependencies
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '0'
+
+      - name: Trivy Vulnerability Audit - Vote Image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'capstone-local/vote:${{ github.sha }}'
+          scan-type: 'image'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '0'
+
+      - name: Trivy Vulnerability Audit - Result Image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'capstone-local/result:${{ github.sha }}'
+          scan-type: 'image'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '0'
+
+      - name: Trivy Vulnerability Audit - Worker Image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'capstone-local/worker:${{ github.sha }}'
+          scan-type: 'image'
+          scanners: 'vuln'
+          severity: 'CRITICAL,HIGH'
+          format: 'table'
+          exit-code: '0'
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag and push Vote, Result, and Worker images with commit SHA to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -z "${DOCKERHUB_USER}" ]; then
+            echo "Error: DOCKERHUB_USERNAME secret is not configured."
+            exit 1
+          fi
+          docker tag capstone-local/vote:${{ github.sha }} "${DOCKERHUB_USER}/example-voting-app-vote:${{ github.sha }}"
+          docker tag capstone-local/result:${{ github.sha }} "${DOCKERHUB_USER}/example-voting-app-result:${{ github.sha }}"
+          docker tag capstone-local/worker:${{ github.sha }} "${DOCKERHUB_USER}/example-voting-app-worker:${{ github.sha }}"
+
+          docker push "${DOCKERHUB_USER}/example-voting-app-vote:${{ github.sha }}"
+          docker push "${DOCKERHUB_USER}/example-voting-app-result:${{ github.sha }}"
+          docker push "${DOCKERHUB_USER}/example-voting-app-worker:${{ github.sha }}"
